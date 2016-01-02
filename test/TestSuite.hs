@@ -25,6 +25,6 @@ main = do
     BasicFunctions.koans
     Lists.koans
     Currification.tests
-    BasicIO.tests
+    -- BasicIO.tests
     ParserCombinators.tests
   return ()
