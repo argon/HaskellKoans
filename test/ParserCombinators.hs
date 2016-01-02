@@ -3,6 +3,7 @@ module ParserCombinators (tests) where
 
 import Test.Hspec (Spec, describe, it)
 import Test.HUnit (assertBool, assertEqual, Assertion)
+import Control.Applicative ((<$>), (<|>))
 import qualified Data.Attoparsec.Text as P
 import Data.Text (Text)
 
@@ -55,20 +56,19 @@ testSymbolParser = it "symbol parser" $ do
 data Atom = AInt Int | ASym Text deriving (Eq, Show)
 
 parseAInt :: P.Parser Atom
-parseAInt = do
-  d <- P.decimal
-  return $ AInt d
+parseAInt = AInt <$> P.decimal
 
 parseASym :: P.Parser Atom
-parseASym = do
-  s <- P.takeWhile1 $ P.notInClass "() "
-  return $ ASym s 
+parseASym = ASym <$> (P.takeWhile1 $ P.notInClass "() ")
+
+parseAtom :: P.Parser Atom
+parseAtom = parseAInt <|> parseASym
 
 testAtomParser :: Spec
 testAtomParser = it "atom parser" $ do
     -- Change parser with the correct parser to use
     --
-    let parser = P.choice [parseAInt, parseASym]
+    let parser = parseAtom
     assertParse (ASym "ab") $ P.parseOnly parser "ab"
     assertParse (ASym "a/b") $ P.parseOnly parser "a/b"
     assertParse (ASym "a/b") $ P.parseOnly parser "a/b c"
@@ -79,20 +79,12 @@ data List = Nil | LAtom Atom | Cons List List deriving (Eq, Show)
 parseList :: P.Parser List
 parseList = do
   P.char '('
-  retVal <- P.choice [
-    Cons <$> token <*> secondToken
-    , return Nil
-    ]
+  retVal <- (Cons <$> token <*> secondToken) <|> return Nil
   P.char ')'
   return retVal
   where
-    token = P.choice [parseList, LAtom <$> parseAInt, LAtom <$> parseASym]
-    secondToken = P.choice [
-        do
-          P.char ' '
-          token 
-      , return Nil
-      ]
+    token = parseList <|> (LAtom <$> parseAtom)
+    secondToken = (P.char ' ' >> token) <|> return Nil
 
 testListParser :: Spec
 testListParser = it "list parser" $ do
