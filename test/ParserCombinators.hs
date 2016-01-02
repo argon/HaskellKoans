@@ -23,23 +23,23 @@ failParser parserName =
          ++ "\n\tand http://hackage.haskell.org/packages/archive/attoparsec/latest/doc/html/Data-Attoparsec-Combinator.html"
 
 assertParse :: (Eq a, Show a) => a -> Either String a -> Assertion
-assertParse _ (Left e) = assertBool e False
 assertParse expected (Right answer) =
   assertEqual "wrong parser" expected answer
 
 testDigitParser :: Spec
 testDigitParser = it "digit parser" $ do
     -- Change parser with the correct parser to use
-    let parser = failParser "digit parser" :: P.Parser Char
+    let parser = P.digit
     let result = P.parseOnly parser "5"
     assertParse '5' result
 
 testDigitsParser :: Spec
 testDigitsParser = it "sequence of digits parser" $ do
     -- Change parser with the correct parser to use
-    let parser = failParser "sequence of digits parser" :: P.Parser String
+    -- let parser = P.takeWhile isDigit where isDigit c = c >= '0' && c <= '9'
+    let parser = P.decimal
     let result = P.parseOnly parser "54321"
-    assertParse "54321" result
+    assertParse 54321 result
 
 testSymbolParser :: Spec
 testSymbolParser = it "symbol parser" $ do
@@ -47,18 +47,28 @@ testSymbolParser = it "symbol parser" $ do
     --
     -- Here we say symbol is a sequence of characters that doesn't have
     -- parenthes or spaces.
-    let parser = failParser "symbol parser" :: P.Parser String
+    let parser = P.takeWhile $ P.notInClass "() "
     assertParse "ab" $ P.parseOnly parser "ab"
     assertParse "a/b" $ P.parseOnly parser "a/b"
     assertParse "a/b" $ P.parseOnly parser "a/b c"
 
 data Atom = AInt Int | ASym Text deriving (Eq, Show)
 
+parseAInt :: P.Parser Atom
+parseAInt = do
+  d <- P.decimal
+  return $ AInt d
+
+parseASym :: P.Parser Atom
+parseASym = do
+  s <- P.takeWhile1 $ P.notInClass "() "
+  return $ ASym s 
+
 testAtomParser :: Spec
 testAtomParser = it "atom parser" $ do
     -- Change parser with the correct parser to use
     --
-    let parser = failParser "atom parser" :: P.Parser Atom
+    let parser = P.choice [parseAInt, parseASym]
     assertParse (ASym "ab") $ P.parseOnly parser "ab"
     assertParse (ASym "a/b") $ P.parseOnly parser "a/b"
     assertParse (ASym "a/b") $ P.parseOnly parser "a/b c"
@@ -66,10 +76,28 @@ testAtomParser = it "atom parser" $ do
 
 data List = Nil | LAtom Atom | Cons List List deriving (Eq, Show)
 
+parseList :: P.Parser List
+parseList = do
+  P.char '('
+  retVal <- P.choice [
+    Cons <$> token <*> secondToken
+    , return Nil
+    ]
+  P.char ')'
+  return retVal
+  where
+    token = P.choice [parseList, LAtom <$> parseAInt, LAtom <$> parseASym]
+    secondToken = P.choice [
+        do
+          P.char ' '
+          token 
+      , return Nil
+      ]
+
 testListParser :: Spec
 testListParser = it "list parser" $ do
     -- Change parser with the correct parser to use
-    let parser = failParser "list parser" :: P.Parser List
+    let parser = parseList :: P.Parser List
     assertParse Nil $ P.parseOnly parser "()"
     assertParse (Cons (LAtom (AInt 12)) Nil) $ P.parseOnly parser "(12)"
     assertParse (Cons (LAtom (ASym "a")) (Cons (LAtom (ASym "b")) Nil)) $ P.parseOnly parser "(a (b))"
